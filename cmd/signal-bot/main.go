@@ -36,6 +36,7 @@ func main() {
 	startupMsg := fmt.Sprintf("🚀 Stock Signal Bot started!\n\n"+
 		"📊 Tracking: %s\n"+
 		"⏰ Check interval: %d minutes\n"+
+		"🔧 Indicators: MA(50/200), RSI(14), MACD, Stochastic, Price Action\n"+
 		"📅 Started at: %s",
 		cfg.Symbol,
 		cfg.CheckIntervalMinutes,
@@ -84,8 +85,8 @@ func checkSignals(symbol string, stockClient *stock.Client, telegramBot *telegra
 
 	log.Printf("Current price for %s: $%.2f", symbol, quote.Price)
 
-	// Get historical data (need enough for longest indicator)
-	historicalData, err := stockClient.GetHistoricalData(symbol, 60)
+	// Get historical data (need enough for longest indicator - 200+ days for MA)
+	historicalData, err := stockClient.GetHistoricalData(symbol, 250)
 	if err != nil {
 		log.Printf("Error fetching historical data: %v", err)
 		return
@@ -98,8 +99,11 @@ func checkSignals(symbol string, stockClient *stock.Client, telegramBot *telegra
 		return
 	}
 
+	// Get summary
+	buyCount, sellCount, holdCount, overallSignal := analyzer.GetSummary(signals)
+
 	// Format and send message
-	message := formatSignalMessage(symbol, quote, signals)
+	message := formatSignalMessage(symbol, quote, signals, buyCount, sellCount, holdCount, overallSignal)
 	if err := telegramBot.SendMessage(message); err != nil {
 		log.Printf("Error sending message: %v", err)
 	} else {
@@ -107,18 +111,28 @@ func checkSignals(symbol string, stockClient *stock.Client, telegramBot *telegra
 	}
 }
 
-func formatSignalMessage(symbol string, quote *stock.Quote, signals []*sigindicator.Signal) string {
+func formatSignalMessage(symbol string, quote *stock.Quote, signals []*sigindicator.Signal, buyCount, sellCount, holdCount int, overallSignal sigindicator.SignalType) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("📊 %s Signal Update\n", symbol))
-	sb.WriteString(fmt.Sprintf("═══════════════════\n"))
-	sb.WriteString(fmt.Sprintf("💰 Current Price: $%.2f\n", quote.Price))
-	sb.WriteString(fmt.Sprintf("📈 Open: $%.2f | High: $%.2f\n", quote.Open, quote.High))
-	sb.WriteString(fmt.Sprintf("📉 Low: $%.2f | Volume: %d\n", quote.Low, quote.Volume))
-	sb.WriteString(fmt.Sprintf("📅 Date: %s\n\n", quote.Timestamp.Format("2006-01-02")))
+	// Header with overall recommendation
+	overallEmoji := getSignalEmoji(overallSignal)
+	sb.WriteString(fmt.Sprintf("📊 %s Signal Report\n", symbol))
+	sb.WriteString("═══════════════════════════\n\n")
 
-	sb.WriteString("🔍 Signal Analysis:\n")
-	sb.WriteString("───────────────────\n")
+	// Overall Signal Summary
+	sb.WriteString(fmt.Sprintf("%s OVERALL: %s\n", overallEmoji, overallSignal))
+	sb.WriteString(fmt.Sprintf("   🟢 Buy: %d | 🔴 Sell: %d | 🟡 Hold: %d\n\n", buyCount, sellCount, holdCount))
+
+	// Price Information
+	sb.WriteString("💰 Price Data:\n")
+	sb.WriteString(fmt.Sprintf("   Current: $%.2f\n", quote.Price))
+	sb.WriteString(fmt.Sprintf("   Open: $%.2f | High: $%.2f | Low: $%.2f\n", quote.Open, quote.High, quote.Low))
+	sb.WriteString(fmt.Sprintf("   Volume: %d\n", quote.Volume))
+	sb.WriteString(fmt.Sprintf("   Date: %s\n\n", quote.Timestamp.Format("2006-01-02")))
+
+	// Detailed Signal Analysis
+	sb.WriteString("🔍 Indicator Signals:\n")
+	sb.WriteString("───────────────────────────\n")
 
 	for _, sig := range signals {
 		emoji := getSignalEmoji(sig.Type)
@@ -129,7 +143,7 @@ func formatSignalMessage(symbol string, quote *stock.Quote, signals []*sigindica
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("\n⏰ Updated: %s", time.Now().Format("15:04:05 MST")))
+	sb.WriteString(fmt.Sprintf("\n⏰ Updated: %s", time.Now().Format("2006-01-02 15:04:05 MST")))
 
 	return sb.String()
 }
