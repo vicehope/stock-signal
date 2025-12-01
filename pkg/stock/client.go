@@ -111,13 +111,31 @@ func (c *Client) GetQuote(symbol string) (*Quote, error) {
 		return nil, fmt.Errorf("no quote data returned for symbol %s (API limit may be reached)", symbol)
 	}
 
-	price, _ := strconv.ParseFloat(avQuote.GlobalQuote.Price, 64)
-	open, _ := strconv.ParseFloat(avQuote.GlobalQuote.Open, 64)
-	high, _ := strconv.ParseFloat(avQuote.GlobalQuote.High, 64)
-	low, _ := strconv.ParseFloat(avQuote.GlobalQuote.Low, 64)
-	volume, _ := strconv.ParseInt(avQuote.GlobalQuote.Volume, 10, 64)
+	price, err := strconv.ParseFloat(avQuote.GlobalQuote.Price, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse price: %w", err)
+	}
+	open, err := strconv.ParseFloat(avQuote.GlobalQuote.Open, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse open price: %w", err)
+	}
+	high, err := strconv.ParseFloat(avQuote.GlobalQuote.High, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse high price: %w", err)
+	}
+	low, err := strconv.ParseFloat(avQuote.GlobalQuote.Low, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse low price: %w", err)
+	}
+	volume, err := strconv.ParseInt(avQuote.GlobalQuote.Volume, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse volume: %w", err)
+	}
 
-	tradingDay, _ := time.Parse("2006-01-02", avQuote.GlobalQuote.LatestTradingDay)
+	tradingDay, err := time.Parse("2006-01-02", avQuote.GlobalQuote.LatestTradingDay)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse trading day: %w", err)
+	}
 
 	return &Quote{
 		Symbol:    symbol,
@@ -171,11 +189,26 @@ func (c *Client) GetHistoricalData(symbol string, days int) (*HistoricalData, er
 			continue
 		}
 
-		open, _ := strconv.ParseFloat(data.Open, 64)
-		high, _ := strconv.ParseFloat(data.High, 64)
-		low, _ := strconv.ParseFloat(data.Low, 64)
-		closePrice, _ := strconv.ParseFloat(data.Close, 64)
-		volume, _ := strconv.ParseInt(data.Volume, 10, 64)
+		open, err := strconv.ParseFloat(data.Open, 64)
+		if err != nil {
+			continue
+		}
+		high, err := strconv.ParseFloat(data.High, 64)
+		if err != nil {
+			continue
+		}
+		low, err := strconv.ParseFloat(data.Low, 64)
+		if err != nil {
+			continue
+		}
+		closePrice, err := strconv.ParseFloat(data.Close, 64)
+		if err != nil {
+			continue
+		}
+		volume, err := strconv.ParseInt(data.Volume, 10, 64)
+		if err != nil {
+			continue
+		}
 
 		prices = append(prices, DailyPrice{
 			Date:   date,

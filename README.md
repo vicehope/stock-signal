@@ -13,7 +13,7 @@ A Go application that monitors VOO (Vanguard S&P 500 ETF) stock prices and sends
 
 ## Prerequisites
 
-- Go 1.21 or later
+- Go 1.24 or later
 - Alpha Vantage API key (free tier available at https://www.alphavantage.co/support/#api-key)
 - Telegram Bot token (create via [@BotFather](https://t.me/botfather))
 - Telegram Chat ID where messages will be sent
