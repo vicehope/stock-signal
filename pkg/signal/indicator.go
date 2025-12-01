@@ -21,6 +21,19 @@ const (
 	Hold SignalType = "HOLD"
 )
 
+// Threshold constants for indicator analysis
+const (
+	// TrendThreshold is the minimum strength score required to confirm a trend direction.
+	// A value of 0.6 means at least 60% of price movements must align with the trend.
+	TrendThreshold = 0.6
+
+	// DefaultBreakoutThreshold is the default percentage above resistance for breakout detection (2%).
+	DefaultBreakoutThreshold = 0.02
+
+	// DefaultBreakdownThreshold is the default percentage below support for breakdown detection (2%).
+	DefaultBreakdownThreshold = 0.02
+)
+
 // Signal represents a trading signal with metadata.
 type Signal struct {
 	Type       SignalType
@@ -428,23 +441,19 @@ func (p *PriceActionIndicator) Analyze(data *stock.HistoricalData, currentPrice 
 	// Analyze trend using higher highs/lows or lower highs/lows
 	trend, trendStrength := analyzeTrend(data.Data, 10) // Use last 10 days for trend
 
-	// Check for breakout/breakdown
-	breakoutThreshold := 0.02 // 2% above resistance
-	breakdownThreshold := 0.02 // 2% below support
-
-	if currentPrice > resistance*(1+breakoutThreshold) {
+	if currentPrice > resistance*(1+DefaultBreakoutThreshold) {
 		signal.Type = Buy
 		signal.Reason = fmt.Sprintf("Breakout above resistance (%.2f). Current: %.2f", resistance, currentPrice)
 		signal.Confidence = 0.7
-	} else if currentPrice < support*(1-breakdownThreshold) {
+	} else if currentPrice < support*(1-DefaultBreakdownThreshold) {
 		signal.Type = Sell
 		signal.Reason = fmt.Sprintf("Breakdown below support (%.2f). Current: %.2f", support, currentPrice)
 		signal.Confidence = 0.7
-	} else if trend == "uptrend" && trendStrength > 0.6 {
+	} else if trend == "uptrend" && trendStrength > TrendThreshold {
 		signal.Type = Buy
 		signal.Reason = fmt.Sprintf("Uptrend confirmed (higher highs/lows). Strength: %.0f%%", trendStrength*100)
 		signal.Confidence = 0.6
-	} else if trend == "downtrend" && trendStrength > 0.6 {
+	} else if trend == "downtrend" && trendStrength > TrendThreshold {
 		signal.Type = Sell
 		signal.Reason = fmt.Sprintf("Downtrend confirmed (lower highs/lows). Strength: %.0f%%", trendStrength*100)
 		signal.Confidence = 0.6
@@ -684,9 +693,9 @@ func analyzeTrend(data []stock.DailyPrice, period int) (trend string, strength f
 	uptrendScore := (float64(higherHighs) + float64(higherLows)) / (2 * total)
 	downtrendScore := (float64(lowerHighs) + float64(lowerLows)) / (2 * total)
 
-	if uptrendScore > 0.6 {
+	if uptrendScore > TrendThreshold {
 		return "uptrend", uptrendScore
-	} else if downtrendScore > 0.6 {
+	} else if downtrendScore > TrendThreshold {
 		return "downtrend", downtrendScore
 	}
 	return "neutral", 0.5

@@ -16,6 +16,11 @@ import (
 	"github.com/vicehope/stock-signal/pkg/telegram"
 )
 
+// RequiredHistoricalDays is the number of days of historical data needed.
+// This must be at least 201 days to support the 200-day moving average indicator,
+// with extra buffer for crossover detection and other calculations.
+const RequiredHistoricalDays = 250
+
 func main() {
 	log.Println("Starting Stock Signal Bot...")
 
@@ -86,7 +91,7 @@ func checkSignals(symbol string, stockClient *stock.Client, telegramBot *telegra
 	log.Printf("Current price for %s: $%.2f", symbol, quote.Price)
 
 	// Get historical data (need enough for longest indicator - 200+ days for MA)
-	historicalData, err := stockClient.GetHistoricalData(symbol, 250)
+	historicalData, err := stockClient.GetHistoricalData(symbol, RequiredHistoricalDays)
 	if err != nil {
 		log.Printf("Error fetching historical data: %v", err)
 		return
