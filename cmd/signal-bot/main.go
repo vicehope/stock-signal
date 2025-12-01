@@ -1,0 +1,146 @@
+// Package main is the entry point for the stock signal bot.
+package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/vicehope/stock-signal/pkg/config"
+	sigindicator "github.com/vicehope/stock-signal/pkg/signal"
+	"github.com/vicehope/stock-signal/pkg/stock"
+	"github.com/vicehope/stock-signal/pkg/telegram"
+)
+
+func main() {
+	log.Println("Starting Stock Signal Bot...")
+
+	// Load configuration
+	cfg := config.LoadFromEnv()
+
+	// Validate configuration
+	if missing := cfg.Validate(); len(missing) > 0 {
+		log.Fatalf("Missing required environment variables: %s", strings.Join(missing, ", "))
+	}
+
+	// Initialize clients
+	stockClient := stock.NewClient(cfg.AlphaVantageAPIKey)
+	telegramBot := telegram.NewBot(cfg.TelegramBotToken, cfg.TelegramChatID)
+	analyzer := sigindicator.NewSignalAnalyzer()
+
+	// Send startup message
+	startupMsg := fmt.Sprintf("🚀 Stock Signal Bot started!\n\n"+
+		"📊 Tracking: %s\n"+
+		"⏰ Check interval: %d minutes\n"+
+		"📅 Started at: %s",
+		cfg.Symbol,
+		cfg.CheckIntervalMinutes,
+		time.Now().Format("2006-01-02 15:04:05 MST"))
+
+	if err := telegramBot.SendMessage(startupMsg); err != nil {
+		log.Printf("Warning: Failed to send startup message: %v", err)
+	}
+
+	// Run initial check
+	checkSignals(cfg.Symbol, stockClient, telegramBot, analyzer)
+
+	// Set up ticker for regular checks
+	ticker := time.NewTicker(time.Duration(cfg.CheckIntervalMinutes) * time.Minute)
+	defer ticker.Stop()
+
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	log.Printf("Running signal checks every %d minutes for %s", cfg.CheckIntervalMinutes, cfg.Symbol)
+
+	for {
+		select {
+		case <-ticker.C:
+			checkSignals(cfg.Symbol, stockClient, telegramBot, analyzer)
+		case sig := <-sigChan:
+			log.Printf("Received signal %v, shutting down...", sig)
+			if err := telegramBot.SendMessage("🛑 Stock Signal Bot is shutting down"); err != nil {
+				log.Printf("Warning: Failed to send shutdown message: %v", err)
+			}
+			return
+		}
+	}
+}
+
+func checkSignals(symbol string, stockClient *stock.Client, telegramBot *telegram.Bot, analyzer *sigindicator.SignalAnalyzer) {
+	log.Printf("Checking signals for %s...", symbol)
+
+	// Get current quote
+	quote, err := stockClient.GetQuote(symbol)
+	if err != nil {
+		log.Printf("Error fetching quote: %v", err)
+		return
+	}
+
+	log.Printf("Current price for %s: $%.2f", symbol, quote.Price)
+
+	// Get historical data (need enough for longest indicator)
+	historicalData, err := stockClient.GetHistoricalData(symbol, 60)
+	if err != nil {
+		log.Printf("Error fetching historical data: %v", err)
+		return
+	}
+
+	// Run all indicators
+	signals, err := analyzer.AnalyzeAll(historicalData, quote.Price)
+	if err != nil {
+		log.Printf("Error analyzing signals: %v", err)
+		return
+	}
+
+	// Format and send message
+	message := formatSignalMessage(symbol, quote, signals)
+	if err := telegramBot.SendMessage(message); err != nil {
+		log.Printf("Error sending message: %v", err)
+	} else {
+		log.Println("Signal message sent successfully")
+	}
+}
+
+func formatSignalMessage(symbol string, quote *stock.Quote, signals []*sigindicator.Signal) string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("📊 %s Signal Update\n", symbol))
+	sb.WriteString(fmt.Sprintf("═══════════════════\n"))
+	sb.WriteString(fmt.Sprintf("💰 Current Price: $%.2f\n", quote.Price))
+	sb.WriteString(fmt.Sprintf("📈 Open: $%.2f | High: $%.2f\n", quote.Open, quote.High))
+	sb.WriteString(fmt.Sprintf("📉 Low: $%.2f | Volume: %d\n", quote.Low, quote.Volume))
+	sb.WriteString(fmt.Sprintf("📅 Date: %s\n\n", quote.Timestamp.Format("2006-01-02")))
+
+	sb.WriteString("🔍 Signal Analysis:\n")
+	sb.WriteString("───────────────────\n")
+
+	for _, sig := range signals {
+		emoji := getSignalEmoji(sig.Type)
+		sb.WriteString(fmt.Sprintf("%s %s: %s\n", emoji, sig.Indicator, sig.Type))
+		sb.WriteString(fmt.Sprintf("   └ %s\n", sig.Reason))
+		if sig.Confidence > 0 {
+			sb.WriteString(fmt.Sprintf("   └ Confidence: %.0f%%\n", sig.Confidence*100))
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("\n⏰ Updated: %s", time.Now().Format("15:04:05 MST")))
+
+	return sb.String()
+}
+
+func getSignalEmoji(signalType sigindicator.SignalType) string {
+	switch signalType {
+	case sigindicator.Buy:
+		return "🟢"
+	case sigindicator.Sell:
+		return "🔴"
+	default:
+		return "🟡"
+	}
+}

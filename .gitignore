@@ -1,5 +1,5 @@
 # Binaries
-signal-bot
+/signal-bot
 *.exe
 *.exe~
 *.dll
